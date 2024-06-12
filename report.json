@@ -1,0 +1,152 @@
+{
+  "users": 5,
+  "all_bench_report": {
+    "amount": 5000,
+    "metrics": [
+      {
+        "name": "Average TPS",
+        "unit": "transactions/second",
+        "value": 90.3888888888889
+      },
+      {
+        "name": "Average Extrinsics per block",
+        "unit": "extrinsics/block",
+        "value": 542.3333333333334
+      },
+      {
+        "name": "Average UOPS",
+        "unit": "operations/second",
+        "value": 90.3888888888889
+      },
+      {
+        "name": "Average Steps Per Second",
+        "unit": "operations/second",
+        "value": 0.0
+      }
+    ]
+  },
+  "benches": [
+    {
+      "name": "Erc20 Transfers",
+      "amount": 5000,
+      "metrics": [
+        {
+          "name": "Average TPS",
+          "unit": "transactions/second",
+          "value": 88.63333333333333
+        },
+        {
+          "name": "Average Extrinsics per block",
+          "unit": "extrinsics/block",
+          "value": 531.8
+        },
+        {
+          "name": "Average UOPS",
+          "unit": "operations/second",
+          "value": 88.63333333333333
+        },
+        {
+          "name": "Average Steps Per Second",
+          "unit": "operations/second",
+          "value": 0.0
+        },
+        {
+          "name": "Submission Total Time",
+          "unit": "milliseconds",
+          "value": 166494
+        },
+        {
+          "name": "Submission Max Time",
+          "unit": "milliseconds",
+          "value": 8403
+        },
+        {
+          "name": "Submission Min Time",
+          "unit": "milliseconds",
+          "value": 1
+        },
+        {
+          "name": "Submission Average Time",
+          "unit": "milliseconds",
+          "value": 33.2988
+        },
+        {
+          "name": "Submission Failed Requests",
+          "unit": "",
+          "value": 0
+        },
+        {
+          "name": "Submission P90 Time",
+          "unit": "milliseconds",
+          "value": 3
+        },
+        {
+          "name": "Submission P50 Time",
+          "unit": "milliseconds",
+          "value": 2
+        },
+        {
+          "name": "Verifcation Total Time",
+          "unit": "milliseconds",
+          "value": 21600
+        },
+        {
+          "name": "Verifcation Max Time",
+          "unit": "milliseconds",
+          "value": 4524
+        },
+        {
+          "name": "Verifcation Min Time",
+          "unit": "milliseconds",
+          "value": 1
+        },
+        {
+          "name": "Verifcation Average Time",
+          "unit": "milliseconds",
+          "value": 4.311377245508982
+        },
+        {
+          "name": "Verifcation Failed Requests",
+          "unit": "",
+          "value": 0
+        },
+        {
+          "name": "Verifcation P90 Time",
+          "unit": "milliseconds",
+          "value": 0
+        },
+        {
+          "name": "Verifcation P50 Time",
+          "unit": "milliseconds",
+          "value": 0
+        }
+      ],
+      "last_x_blocks_metrics": {
+        "num_blocks": 4,
+        "metrics": [
+          {
+            "name": "Average TPS",
+            "unit": "transactions/second",
+            "value": 88.63333333333333
+          },
+          {
+            "name": "Average Extrinsics per block",
+            "unit": "extrinsics/block",
+            "value": 531.8
+          },
+          {
+            "name": "Average UOPS",
+            "unit": "operations/second",
+            "value": 88.63333333333333
+          },
+          {
+            "name": "Average Steps Per Second",
+            "unit": "operations/second",
+            "value": 0.0
+          }
+        ]
+      }
+    }
+  ],
+  "extra": "CPU Count: 10\nCPU Model: \nCPU Speed (MHz): 0\nTotal Memory: 16 GB\nPlatform: MacOS 13.3\nRelease: 22.4.0\nArchitecture: aarch64"
+}
