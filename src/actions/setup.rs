@@ -8,14 +8,14 @@ use color_eyre::{
 };
 
 use starknet::core::types::contract::SierraClass;
-use starknet::core::types::Call;
+use starknet::core::types::{Call, DeployAccountTransactionResult};
 use tokio::task::JoinSet;
 
 use std::path::Path;
 
 use starknet::accounts::{
-    Account, AccountFactory, ConnectedAccount, ExecutionEncoding, OpenZeppelinAccountFactory,
-    SingleOwnerAccount,
+    Account, AccountFactory, AccountFactoryError, ConnectedAccount, ExecutionEncoding,
+    OpenZeppelinAccountFactory, SingleOwnerAccount,
 };
 use starknet::core::types::{
     contract::legacy::LegacyContractClass, BlockId, BlockTag, Felt, StarknetError,
@@ -24,7 +24,9 @@ use starknet::macros::{felt, selector};
 use starknet::providers::ProviderError;
 use starknet::providers::{jsonrpc::HttpTransport, JsonRpcClient, Provider};
 use starknet::signers::{LocalWallet, SigningKey};
+use std::error::Error;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use url::Url;
@@ -142,9 +144,13 @@ impl GatlingSetup {
         tracing::info!("Creating {} accounts", num_accounts);
 
         let mut nonce = self.deployer.get_nonce().await?;
-        let mut deployed_accounts: Vec<StarknetAccount> = Vec::with_capacity(num_accounts);
+        let deployed_accounts: Arc<Mutex<Vec<StarknetAccount>>> =
+            Arc::new(Mutex::new(Vec::with_capacity(num_accounts)));
 
-        let mut deployment_joinset = JoinSet::new();
+        let mut deployment_joinset: JoinSet<Result<(), color_eyre::Report>> = JoinSet::new();
+
+        let mut transfer_joinset: JoinSet<Result<Felt, color_eyre::Report>> = JoinSet::new();
+
         for i in 0..num_accounts {
             // TODO: Check if OpenZepplinAccountFactory could be used with other type of accounts ? or should we require users to use OpenZepplinAccountFactory ?
             let signer = self.signer.clone();
@@ -161,7 +167,9 @@ impl GatlingSetup {
 
             let deploy = account_factory.deploy_v1(salt).max_fee(MAX_FEE);
             let address = deploy.address();
-            tracing::info!("Deploying account {i} with salt {salt} at address {address:#064x}");
+            tracing::info!(
+                "Transferring funds to account {i} with salt {salt} at address {address:#064x}"
+            );
 
             if let Ok(account_class_hash) = self
                 .starknet_rpc
@@ -178,7 +186,6 @@ impl GatlingSetup {
                         execution_encoding,
                     );
                     already_deployed_account.set_block_id(BlockId::Tag(BlockTag::Pending));
-                    deployed_accounts.push(already_deployed_account);
                     continue;
                 } else {
                     bail!("Account {i} already deployed at address {address:#064x} with a different class hash {account_class_hash:#064x}, expected {class_hash:#064x}");
@@ -186,43 +193,136 @@ impl GatlingSetup {
             }
 
             let fee_token_address = self.config.setup.fee_token_address;
-            let tx_hash = self
-                .transfer(
-                    fee_token_address,
-                    self.deployer.clone(),
-                    address,
-                    felt!("0xFFFFFFFFFFFFFFF"),
+            let deployer = self.deployer.clone();
+            let transfer_future = async move {
+                let tx_hash = transfer(
+                    deployer,
                     nonce,
+                    felt!("0xFFFFFFFFFFFFFF"),
+                    fee_token_address,
+                    address,
                 )
                 .await?;
+                println!("transferred funds to account {i} with salt {salt} at address {address:#064x} with tx hash {tx_hash:#064x}");
+                Ok(tx_hash)
+            };
+
             nonce += Felt::ONE;
-            wait_for_tx(&self.starknet_rpc, tx_hash, CHECK_INTERVAL).await?;
 
-            let result = deploy.send().await?;
+            transfer_joinset.spawn(transfer_future);
+        }
 
-            let mut new_account = SingleOwnerAccount::new(
-                self.starknet_rpc.clone(),
-                signer.clone(),
-                result.contract_address,
-                self.config.setup.chain_id,
-                execution_encoding,
-            );
-            new_account.set_block_id(BlockId::Tag(BlockTag::Pending));
-            deployed_accounts.push(new_account);
+        while let Some(result) = transfer_joinset.join_next().await {
+            result?.wrap_err("Transfer failed")?;
+        }
 
+        println!("completed transfers");
+        tokio::time::sleep(tokio::time::Duration::from_secs(20)).await;
+
+        let mut deployment_joinset = JoinSet::new();
+
+        for i in 0..num_accounts {
+            let deployed_accounts = deployed_accounts.clone();
+            let signer = self.signer.clone();
+            let provider = self.starknet_rpc.clone();
+            let config = self.config.clone();
             let starknet_rpc = self.starknet_rpc.clone();
-            deployment_joinset.spawn(async move {
-                wait_for_tx(&starknet_rpc, result.transaction_hash, CHECK_INTERVAL).await
-            });
+            let account_factory_future = async move {
+                let account_factory = OpenZeppelinAccountFactory::new(
+                    class_hash,
+                    config.setup.chain_id,
+                    &signer,
+                    &provider,
+                )
+                .await?;
 
-            tracing::info!("Account {i} deployed at address {address:#064x}");
+                let salt = config.deployer.salt + Felt::from(i);
+
+                let deploy = account_factory.deploy_v1(salt).max_fee(MAX_FEE);
+                let address = deploy.address();
+                tracing::info!("Deploying account {i} with salt {salt} at address {address:#064x}");
+
+                let class_hash_result = starknet_rpc
+                    .get_class_hash_at(BlockId::Tag(BlockTag::Pending), address)
+                    .await;
+                if let Ok(account_class_hash) = class_hash_result {
+                    if account_class_hash == class_hash {
+                        tracing::warn!("Account {i} already deployed at address {address:#064x}");
+                        let mut already_deployed_account = SingleOwnerAccount::new(
+                            starknet_rpc.clone(),
+                            signer.clone(),
+                            address,
+                            config.setup.chain_id,
+                            execution_encoding,
+                        );
+                        already_deployed_account.set_block_id(BlockId::Tag(BlockTag::Pending));
+                        deployed_accounts
+                            .lock()
+                            .unwrap()
+                            .push(already_deployed_account);
+                        return Ok(());
+                    } else {
+                        bail!("Account {i} already deployed at address {address:#064x} with a different class hash {account_class_hash:#064x}, expected {class_hash:#064x}");
+                    }
+                } else {
+                    tracing::warn!(
+                        "Error while getting class hash: {}",
+                        class_hash_result.err().unwrap()
+                    );
+                }
+
+                let fee_token_address = config.setup.fee_token_address;
+
+                let result = match deploy.send().await {
+                    Ok(res) => res,
+                    Err(AccountFactoryError::Provider(ProviderError::StarknetError(
+                        StarknetError::ValidationFailure(s),
+                    ))) => {
+                        tracing::error!("Validation failure: {}", s);
+                        if !s.contains("Invalid transaction nonce") {
+                            tracing::info!("Skipping account {i} at address {address:#064x} due to validation failure: {}", s);
+                            return Ok(());
+                        }
+                        DeployAccountTransactionResult {
+                            transaction_hash: Felt::ZERO,
+                            contract_address: Felt::ZERO,
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Error while sending deployment: {}", e);
+                        return Err(e.into());
+                    }
+                };
+
+                let mut new_account = SingleOwnerAccount::new(
+                    starknet_rpc.clone(),
+                    signer.clone(),
+                    result.contract_address,
+                    config.setup.chain_id,
+                    execution_encoding,
+                );
+                new_account.set_block_id(BlockId::Tag(BlockTag::Pending));
+                deployed_accounts.lock().unwrap().push(new_account);
+
+                let starknet_rpc = starknet_rpc.clone();
+                if result.transaction_hash != Felt::ZERO {
+                    wait_for_tx(&starknet_rpc, result.transaction_hash, CHECK_INTERVAL).await
+                } else {
+                    Ok(())
+                }
+            };
+
+            deployment_joinset.spawn(account_factory_future);
         }
 
         while let Some(result) = deployment_joinset.join_next().await {
             result??;
         }
 
-        Ok(deployed_accounts)
+        Ok(Arc::try_unwrap(deployed_accounts)
+            .unwrap()
+            .into_inner()
+            .unwrap())
     }
 
     async fn check_already_declared(&self, class_hash: Felt) -> Result<bool> {
@@ -362,9 +462,14 @@ pub async fn transfer(
         .max_fee(MAX_FEE)
         .nonce(nonce)
         .send()
-        .await?;
+        .await;
 
-    Ok(result.transaction_hash)
+    if let Err(e) = result {
+        tracing::error!("Failed to execute transfer: {}", e);
+        return Ok(Felt::ZERO);
+    }
+
+    Ok(result.unwrap().transaction_hash)
 }
 
 /// Create a StarkNet RPC provider from a URL.

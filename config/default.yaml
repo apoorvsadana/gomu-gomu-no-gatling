@@ -13,18 +13,18 @@ setup:
 
   fee_token_address: "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7"
   num_accounts: 1
-  chain_id: "MADARA"
+  chain_id: "MADARA_DEVNET"
 
 run:
-  concurrency: 5
+  concurrency: 1000
   shooters:
     - name: "transfer"
-      shoot: 5000
+      shoot: 1000000
     - name: "mint"
-      shoot: 5000
+      shoot: 0
   read_benches:
     - name: "Get Events"
-      num_requests: 100
+      num_requests: 0
       method: "starknet_getEvents"
       parameters_location: "config/read_params/get_events.json"
 
@@ -33,7 +33,7 @@ report:
   output_location: "report"
 
 deployer:
-  salt: "1"
-  address: "0x0000000000000000000000000000000000000000000000000000000000000004"
-  signing_key: "0x00c1cf1490de1352865301bb8705143f3ef938f97fdf892f1090dcb5ac7bcd1d"
+  salt: "0x1"
+  address: "0x008a1719e7ca19f3d91e8ef50a48fc456575f645497a1d55f30e3781f786afe4"
+  signing_key: "0x514977443078cf1e0c36bc88b89ada9a46061a5cf728f40274caea21d76f174"
   legacy_account: false

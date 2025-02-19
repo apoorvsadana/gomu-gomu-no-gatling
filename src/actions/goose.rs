@@ -62,6 +62,7 @@ pub fn make_goose_config(
         default.host.clone_from(&config.rpc.url);
         default.iterations = user_iterations as usize;
         default.users = Some(config.run.concurrency as usize);
+        default.startup_time = "5s".to_string();
         default
     })
 }
