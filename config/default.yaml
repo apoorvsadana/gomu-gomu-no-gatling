@@ -19,7 +19,7 @@ run:
   concurrency: 1000
   shooters:
     - name: "transfer"
-      shoot: 1000000
+      shoot: 1000
     - name: "mint"
       shoot: 0
   read_benches:

@@ -130,7 +130,8 @@ impl Shooter for TransferShooter {
     }
 
     fn get_execution_data(&self, _account: &StarknetAccount) -> Call {
-        const VOID_ADDRESS: Felt = felt!("0xdead");
+        let VOID_ADDRESS: Felt =
+            Felt::from_dec_str(rand::random::<u128>().to_string().as_str()).unwrap();
         let (amount_low, amount_high) = (felt!("1"), felt!("0"));
         Call {
             to: self.erc20_address,
